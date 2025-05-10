@@ -1,7 +1,9 @@
-from src.views import main_info
-import pandas as pd
 import json
 from unittest.mock import patch
+
+import pandas as pd
+
+from src.views import main_info
 
 
 @patch("src.views.get_currency_rates")

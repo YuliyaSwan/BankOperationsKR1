@@ -1,14 +1,23 @@
 import json
+import logging
 from typing import Any, Dict
 
 from src.utils import (get_card_number, get_currency_rates, get_date_period, get_path_and_period,
                        get_sp500_stock_prices, get_top_transactions, time_for_greeting)
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="app.log",
+    filemode="a",
+    encoding="utf-8",
+)
+
 
 def main_info(date_time: str) -> Dict[str, Any]:
     """
     Функция, принимающая на вход строку с датой и временем в формате YYYY-MM-DD HH:MM:SS и возвращающую JSON-ответ
-    2018-05-20 00:00:00
     """
 
     greeting = time_for_greeting()
