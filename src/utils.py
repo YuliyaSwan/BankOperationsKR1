@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import datetime
 from decimal import Decimal
@@ -9,6 +10,16 @@ from dotenv import load_dotenv
 from pandas import DataFrame
 
 # from xml.etree import ElementTree as ET
+
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="app.log",
+    filemode="a",
+    encoding="utf-8"
+)
 
 
 def time_for_greeting():
@@ -27,6 +38,7 @@ def time_for_greeting():
 
 def get_date_period(date_time: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> list[str]:
     """Функция принимает дату от пользователя и возвращает отчетный период"""
+    logging.info("Определение отчетного периода для даты %s", date_time)
     day_end = datetime.strptime(date_time, date_format)
     day_start = day_end.replace(day=1)
 
@@ -38,6 +50,7 @@ def get_date_period(date_time: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> l
 
 def get_path_and_period(path_to_file: str, date_period: list) -> DataFrame:
     """Функция принимает путь до файла и отчетный период и возвращает таблицу данных с заданным периодом"""
+    logging.info("Загрузка и фильтрация данных из файла: %s", path_to_file)
     df = pd.read_excel(path_to_file, sheet_name="Отчет по операциям")
 
     df["Дата операции"] = pd.to_datetime(df["Дата операции"], dayfirst=True)
@@ -48,13 +61,13 @@ def get_path_and_period(path_to_file: str, date_period: list) -> DataFrame:
     filtered_df = df[(df["Дата операции"] >= start_day) & (df["Дата операции"] <= end_day)]
 
     sorted_df = filtered_df.sort_values(by="Дата операции", ascending=True)
-
+    logging.info("Фильтрация завершена. Количество операций: %d", len(sorted_df))
     return sorted_df
 
 
 def get_card_number(sorted_df: DataFrame) -> list[dict]:
     """Функция принимает DataFrame и возвращает список карт с расходами"""
-
+    logging.info("Анализ транзакций по картам")
     card_transaction = []
     card_sorted = sorted_df[["Номер карты", "Сумма операции"]]
     for i, row in card_sorted.iterrows():
@@ -87,11 +100,13 @@ def get_card_number(sorted_df: DataFrame) -> list[dict]:
             }
         )
 
+    logging.info("Обнаружено %d уникальных карт", len(result))
     return result
 
 
 def get_top_transactions(sorted_df: DataFrame, top_n: int = 5) -> list[dict]:
     """Возвращает топ-5 транзакций по абсолютной сумме платежа"""
+    logging.info("Получение топ-%d транзакций", top_n)
     top_df = sorted_df.copy()
 
     top_df["abs_amount"] = top_df["Сумма операции"].abs()
@@ -108,12 +123,14 @@ def get_top_transactions(sorted_df: DataFrame, top_n: int = 5) -> list[dict]:
             }
         )
 
+    logging.info("Топ транзакции сформированы")
     return top_transactions
 
 
 def get_currency_rates(json_path: str) -> list[dict]:
     """Получает курсы валют, указанных в JSON-файле, по отношению к RUB"""
 
+    logging.info(f"Получение списка валют из {json_path}")
     # Загружаем переменные окружения из файла .env
     load_dotenv(".env")
     API_KEY = os.getenv("API_KEY_1")
@@ -123,20 +140,20 @@ def get_currency_rates(json_path: str) -> list[dict]:
         with open(json_path, "r", encoding="utf-8") as f:
             prefs = json.load(f)
             currencies = prefs.get("user_currencies", [])
+        logging.info(f"Загружены валюты: {currencies}")
     except Exception as e:
-        print(f"Ошибка при чтении JSON: {e}")
-        return []
+        logging.error(f"Ошибка при чтении JSON: {e}", exc_info=True)
+        return []  # Обработка ошибки, возвращаем пустой список
 
     if not currencies:
-        print("Список валют пуст.")
-        return []
+        logging.warning("Список валют пуст.")
+        return []  # Если список пустой, возвращаем пустой список
 
     headers = {"apikey": API_KEY}
     result = []
 
     for code in currencies:
         try:
-
             url = f"https://api.apilayer.com/exchangerates_data/convert?to=RUB&from={code}&amount=1"
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -145,8 +162,9 @@ def get_currency_rates(json_path: str) -> list[dict]:
             rate = data.get("result")
             if rate:
                 result.append({"currency": code, "rate": float(round(Decimal(str(rate)), 2))})
+                logging.info(f"Получен курс для {code}: {rate}")
         except Exception as e:
-            print(f"Ошибка при получении курса для {code}: {e}")
+            logging.error(f"Ошибка при получении курса для {code}: {e}", exc_info=True)
             continue
 
     return result
@@ -178,6 +196,7 @@ def get_currency_rates(json_path: str) -> list[dict]:
 def get_sp500_stock_prices(json_path: str) -> list[dict]:
     """Получает текущие цены акций, указанных в JSON-файле"""
 
+    logging.info(f"Получение списка акций из {json_path}")
     # Загрузка API-ключа
     load_dotenv(".env")
     API_KEY = os.getenv("API_KEY_2")
@@ -187,13 +206,14 @@ def get_sp500_stock_prices(json_path: str) -> list[dict]:
         with open(json_path, "r", encoding="utf-8") as f:
             settings = json.load(f)
             stocks = settings.get("user_stocks", [])
+            logging.info(f"Загружены тикеры акций: {stocks}")
     except Exception as e:
-        print(f"Ошибка при чтении JSON-файла: {e}")
-        return []
+        logging.error(f"Ошибка при чтении JSON-файла: {e}", exc_info=True)
+        return []  # Обработка ошибки, возвращаем пустой список
 
     if not stocks:
-        print("Список акций пуст.")
-        return []
+        logging.warning("Список акций пуст.")
+        return []  # Если список пустой, возвращаем пустой список
 
     symbols = ",".join(stocks)
     url = f"https://financialmodelingprep.com/api/v3/quote/{symbols}?apikey={API_KEY}"
@@ -204,7 +224,8 @@ def get_sp500_stock_prices(json_path: str) -> list[dict]:
         stock_prices = []
         for item in data:
             stock_prices.append({"stock": item["symbol"], "price": round(float(item["price"]), 2)})
+        logging.info("Цены акций успешно получены")
         return stock_prices
     except Exception as e:
-        print(f"Ошибка при получении цен акций: {e}")
+        logging.error("Ошибка при получении цен акций: %s", e, exc_info=True)
         return []
