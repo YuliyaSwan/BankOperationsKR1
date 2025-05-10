@@ -1,21 +1,16 @@
-import json
 import os
-from unittest.mock import patch, mock_open, MagicMock
-import pytest
-import pandas as pd
 from datetime import datetime
-from src.utils import (
-    get_card_number,
-    get_currency_rates,
-    get_date_period,
-    get_path_and_period,
-    get_sp500_stock_prices,
-    get_top_transactions,
-    time_for_greeting,
-)
+from unittest.mock import MagicMock, mock_open, patch
 
+import pandas as pd
+import pytest
+
+from src.utils import (get_card_number, get_currency_rates, get_date_period, get_limit_transaction, get_month_period,
+                       get_path_and_period, get_sp500_stock_prices, get_top_transactions, load_transactions_from_excel,
+                       time_for_greeting)
 
 # -------- FIXTURES --------
+
 
 @pytest.fixture
 def sample_dataframe():
@@ -24,7 +19,7 @@ def sample_dataframe():
         "Номер карты": ["****1234", "****1234", "****5678"],
         "Сумма операции": [-100.0, -200.0, -300.0],
         "Категория": ["Еда", "Транспорт", "Развлечения"],
-        "Описание": ["Ресторан", "Метро", "Кино"]
+        "Описание": ["Ресторан", "Метро", "Кино"],
     }
     return pd.DataFrame(data)
 
@@ -38,6 +33,7 @@ def sample_dataframe():
 
 
 # -------- TESTS --------
+
 
 def test_time_for_greeting():
     with patch("src.utils.datetime") as mock_datetime:
@@ -96,10 +92,7 @@ def test_get_currency_rates(mock_get, mock_file):
     mock_get.return_value = mock_response
 
     result = get_currency_rates("settings.json")
-    assert result == [
-        {"currency": "USD", "rate": 82.46},
-        {"currency": "EUR", "rate": 92.79}
-    ]
+    assert result == [{"currency": "USD", "rate": 82.46}, {"currency": "EUR", "rate": 92.79}]
 
 
 @patch("builtins.open", new_callable=mock_open, read_data='{"user_currencies": ["USD", "BAD"]}')
@@ -178,3 +171,51 @@ def test_get_currency_rates_empty_list(mock_file):
 def test_get_sp500_stock_prices_empty_list(mock_file):
     result = get_sp500_stock_prices("settings.json")
     assert result == []
+
+    ##############################
+    # 2. Сервисы.  Инвесткопилка #
+    ##############################
+
+
+@pytest.fixture
+def example_transactions():
+    return [
+        {"Сумма операции": -123.45},
+        {"Сумма операции": -50.10},
+        {"Сумма операции": 300.00},  # доход, не участвует
+    ]
+
+
+def test_get_month_period():
+    period = get_month_period("2024-04")
+    assert period == ["2024-04-01 00:00:00", "2024-04-30 23:59:59"]
+
+
+def test_get_limit_transaction(example_transactions):
+    result = get_limit_transaction(50, example_transactions)
+    # Расчёт:
+    # -123.45 → округляется до 150 → накоплено 26.55
+    # -50.10 → округляется до 100 → накоплено 49.90
+    # итого = 76.45
+    assert result == pytest.approx(76.45, 0.01)
+
+
+@patch("pandas.read_excel")
+def test_load_transactions_from_excel(mock_read_excel, tmp_path):
+    test_file = tmp_path / "test.xlsx"
+    test_month = "2024-04"
+
+    # Подготовим тестовый DataFrame
+    data = {"Дата операции": ["01.04.2024", "15.04.2024"], "Сумма операции": [-100.0, -200.0]}
+    df_mock = pd.DataFrame(data)
+    df_mock["Дата операции"] = pd.to_datetime(df_mock["Дата операции"], dayfirst=True)
+    mock_read_excel.return_value = df_mock
+
+    # Выполнение
+    result = load_transactions_from_excel(str(test_file), test_month)
+
+    # Проверка
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0] == {"Дата операции": "2024-04-01", "Сумма операции": -100.0}
+    assert result[1] == {"Дата операции": "2024-04-15", "Сумма операции": -200.0}

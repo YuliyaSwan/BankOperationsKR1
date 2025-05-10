@@ -1,8 +1,11 @@
 import json
 import logging
+import math
 import os
+from calendar import monthrange
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Dict, List
 
 import pandas as pd
 import requests
@@ -12,13 +15,17 @@ from pandas import DataFrame
 # from xml.etree import ElementTree as ET
 
 
+############################
+# 1. Веб-страница. Главная #
+############################
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     filename="app.log",
     filemode="a",
-    encoding="utf-8"
+    encoding="utf-8",
 )
 
 
@@ -229,3 +236,70 @@ def get_sp500_stock_prices(json_path: str) -> list[dict]:
     except Exception as e:
         logging.error("Ошибка при получении цен акций: %s", e, exc_info=True)
         return []
+
+        ##############################
+        # 2. Сервисы.  Инвесткопилка #
+        ##############################
+
+
+def get_month_period(month: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> list[str]:
+    """
+    Принимает месяц в формате 'YYYY-MM' и возвращает отчетный период с 1-ого по последний день месяца.
+    """
+    logging.info(f"Получение периода для месяца: {month}")
+
+    dt = datetime.strptime(month, "%Y-%m")
+    start_date = dt.replace(day=1)
+    last_day = monthrange(dt.year, dt.month)[1]
+    end_date = dt.replace(day=last_day, hour=23, minute=59, second=59)
+    period = [start_date.strftime(date_format), end_date.strftime(date_format)]
+
+    logging.debug(f"Период: {period}")
+    return period
+
+
+def load_transactions_from_excel(path_to_file: str, month: str) -> List[Dict[str, Any]]:
+    """
+    Загружает данные из Excel-файла и возвращает транзакции за указанный месяц (формат 'YYYY-MM').
+    Возвращает список словарей с ключами 'Дата операция' и 'Сумма операция'.
+    """
+    logging.info(f"Загрузка транзакций из файла: {path_to_file} за месяц: {month}")
+
+    df = pd.read_excel(path_to_file, sheet_name="Отчет по операциям")
+    df["Дата операции"] = pd.to_datetime(df["Дата операции"], dayfirst=True)
+
+    year, month_num = map(int, month.split("-"))
+    start_date = datetime(year, month_num, 1)
+    end_date = datetime(year, month_num, monthrange(year, month_num)[1])
+
+    df_filtered = df[(df["Дата операции"] >= start_date) & (df["Дата операции"] <= end_date)]
+
+    transactions = [
+        {"Дата операции": row["Дата операции"].strftime("%Y-%m-%d"), "Сумма операции": float(row["Сумма операции"])}
+        for _, row in df_filtered.iterrows()
+        if not pd.isna(row["Сумма операции"])
+    ]
+
+    logging.info(f"Загружено {len(transactions)} транзакций")
+    return transactions
+
+
+def get_limit_transaction(limit: int, transactions: list[dict[str, float]]) -> float:
+    """
+    Принимает лимит округления и список операций за указанный месяц.
+    Возвращает сумму, которую можно было бы отложить, округляя расходы вверх до ближайшего лимита.
+    """
+    savings = 0.0
+    logging.info(f"Лимит округления: {limit} ₽")
+
+    for transaction in transactions:
+        amount = transaction.get("Сумма операции", 0)
+        if amount < 0:
+            abs_amount = abs(amount)
+            rounded_up = math.ceil(abs_amount / limit) * limit
+            saved = rounded_up - abs_amount
+            savings += saved
+            logging.debug(f"Операция: {abs_amount}, округлено до: {rounded_up}, накоплено: {saved}")
+    total = round(savings, 2)
+    logging.info(f"Общая сумма накоплений: {total}")
+    return total
