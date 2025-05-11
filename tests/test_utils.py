@@ -1,13 +1,13 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
 import pytest
 
 from src.utils import (get_card_number, get_currency_rates, get_date_period, get_limit_transaction, get_month_period,
-                       get_path_and_period, get_sp500_stock_prices, get_top_transactions, load_transactions_from_excel,
-                       time_for_greeting)
+                       get_path_and_period, get_sp500_stock_prices, get_top_transactions,
+                       load_transactions_for_3_months, load_transactions_from_excel, time_for_greeting)
 
 # -------- FIXTURES --------
 
@@ -219,3 +219,47 @@ def test_load_transactions_from_excel(mock_read_excel, tmp_path):
     assert len(result) == 2
     assert result[0] == {"Дата операции": "2024-04-01", "Сумма операции": -100.0}
     assert result[1] == {"Дата операции": "2024-04-15", "Сумма операции": -200.0}
+
+    ###################################
+    # 3. Отчеты. Траты по дням недели #
+    ###################################
+
+
+@pytest.fixture
+def mock_excel_file(tmp_path):
+    file_path = tmp_path / "mock_operations.xlsx"
+    today = datetime(2024, 5, 1)
+
+    data = {
+        "Дата операции": [
+            (today - timedelta(days=10)).strftime("%d.%m.%Y"),
+            (today - timedelta(days=95)).strftime("%d.%m.%Y"),
+            (today - timedelta(days=45)).strftime("%d.%m.%Y"),
+        ],
+        "Сумма операции": [-1000.0, -2000.0, 500.0],
+    }
+
+    df = pd.DataFrame(data)
+    df.to_excel(file_path, index=False)
+    return file_path
+
+
+def test_load_transactions_valid(mock_excel_file):
+    result = load_transactions_for_3_months(str(mock_excel_file), "2024-05-01")
+    assert isinstance(result, list)
+    assert len(result) == 2  # в пределах последних 90 дней только 2 записи
+    assert all("Дата операции" in r and "Сумма операции" in r for r in result)
+
+
+def test_load_transactions_missing_columns(tmp_path):
+    file_path = tmp_path / "bad_columns.xlsx"
+    df = pd.DataFrame({"Дата": ["01.05.2024"], "Сумма": [-1000]})
+    df.to_excel(file_path, index=False)
+
+    result = load_transactions_for_3_months(str(file_path), "2024-05-01")
+    assert result == []
+
+
+def test_load_transactions_invalid_file():
+    result = load_transactions_for_3_months("non_existing_file.xlsx", "2024-05-01")
+    assert result == []

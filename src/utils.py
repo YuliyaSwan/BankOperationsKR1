@@ -5,8 +5,7 @@ import os
 from calendar import monthrange
 from datetime import datetime, timedelta
 from decimal import Decimal
-from functools import wraps
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List
 
 import pandas as pd
 import requests
@@ -16,9 +15,9 @@ from pandas import DataFrame
 # from xml.etree import ElementTree as ET
 
 
-                                        ############################
-                                        # 1. Веб-страница. Главная #
-                                        ############################
+############################
+# 1. Веб-страница. Главная #
+############################
 
 # Настройка логирования
 logging.basicConfig(
@@ -238,9 +237,9 @@ def get_sp500_stock_prices(json_path: str) -> list[dict]:
         logging.error("Ошибка при получении цен акций: %s", e, exc_info=True)
         return []
 
-                                    ##############################
-                                    # 2. Сервисы.  Инвесткопилка #
-                                    ##############################
+        ##############################
+        # 2. Сервисы.  Инвесткопилка #
+        ##############################
 
 
 def get_month_period(month: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> list[str]:
@@ -305,45 +304,9 @@ def get_limit_transaction(limit: int, transactions: list[dict[str, float]]) -> f
     logging.info(f"Общая сумма накоплений: {total}")
     return total
 
-
-                                    ############################################
-                                    # 3. Отчеты. Траты в рабочий/выходной день #
-                                    ############################################
-
-
-# def log_execution(func: Callable) -> Callable:
-#     """
-#     Декоратор логирования вызова функции.
-#     """
-#     @wraps(func)
-#     def wrapper(*args, **kwargs):
-#         logging.info(f"Вызов функции: {func.__name__}")
-#         result = func(*args, **kwargs)
-#         logging.info(f"Завершение функции: {func.__name__}")
-#         return result
-#     return wrapper
-
-# def save_report(file_name: Optional[str] = None):
-#     """
-#     Декоратор для сохранения результата функции-отчета в JSON-файл.
-#     """
-#     def decorator(func: Callable):
-#         @wraps(func)
-#         def wrapper(*args, **kwargs):
-#             result = func(*args, **kwargs)
-#             out_file = file_name or f"{func.__name__}_report_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-#             try:
-#                 with open(out_file, "w", encoding="utf-8") as f:
-#                     if isinstance(result, pd.DataFrame):
-#                         result.to_json(f, orient='records', force_ascii=False, indent=4)
-#                     else:
-#                         json.dump(result, f, ensure_ascii=False, indent=4)
-#                 logging.info(f"Отчет сохранен в файл: {out_file}")
-#             except Exception as e:
-#                 logging.error(f"Ошибка при сохранении отчета: {e}")
-#             return result
-#         return wrapper
-#     return decorator if file_name is not None else decorator(None)
+    ###################################
+    # 3. Отчеты. Траты по дням недели #
+    ###################################
 
 
 def load_transactions_for_3_months(path_to_file: str, date: str) -> List[Dict[str, Any]]:
@@ -357,34 +320,38 @@ def load_transactions_for_3_months(path_to_file: str, date: str) -> List[Dict[st
 
     try:
         # Преобразуем строку с датой в объект datetime
-        end_date = datetime.strptime(date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        end_date = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
         start_date = end_date - timedelta(days=90)
 
         logging.info(
-            f"Загрузка транзакций из файла: {path_to_file} за период с {start_date.date()} по {end_date.date()}")
+            f"Загрузка транзакций из файла: {path_to_file} за период с {start_date.date()} по {end_date.date()}"
+        )
 
         # Загрузка данных из Excel
         df = pd.read_excel(path_to_file)
+        logging.info(f"Файл загружен: {len(df)} строк")
 
         # Проверка на наличие нужных колонок
-        if 'Дата операции' not in df.columns or 'Сумма операции' not in df.columns:
+        if "Дата операции" not in df.columns or "Сумма операции" not in df.columns:
             raise ValueError("В файле отсутствуют необходимые колонки 'Дата операции' или 'Сумма операции'.")
 
         # Преобразование столбца с датами в тип datetime
-        df['Дата операции'] = pd.to_datetime(df['Дата операции'], dayfirst=True)
+        df["Дата операции"] = pd.to_datetime(df["Дата операции"], dayfirst=True)
 
         # Фильтрация по дате
-        df_filtered = df[(df['Дата операции'] >= start_date) & (df['Дата операции'] <= end_date)]
-
+        df_filtered = df[(df["Дата операции"] >= start_date) & (df["Дата операции"] <= end_date)]
+        logging.info(f"После фильтрации по дате: {len(df_filtered)} строк")
 
         transactions = [
-            {"Дата операции": row["Дата операции"].strftime("%Y-%m-%d"), "Сумма операции": float(row["Сумма операции"])}
+            {
+                "Дата операции": row["Дата операции"].strftime("%Y-%m-%d"),
+                "Сумма операции": float(row["Сумма операции"]),
+            }
             for _, row in df_filtered.iterrows()
             if not pd.isna(row["Сумма операции"])
         ]
 
         logging.info(f"Количество загруженных транзакций: {len(transactions)}")
-
         return transactions
 
     except Exception as e:
