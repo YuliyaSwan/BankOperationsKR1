@@ -3,7 +3,7 @@ import logging
 import math
 import os
 from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List
 
@@ -261,7 +261,7 @@ def get_month_period(month: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> list
 def load_transactions_from_excel(path_to_file: str, month: str) -> List[Dict[str, Any]]:
     """
     Загружает данные из Excel-файла и возвращает транзакции за указанный месяц (формат 'YYYY-MM').
-    Возвращает список словарей с ключами 'Дата операция' и 'Сумма операция'.
+    Возвращает список словарей с ключами 'Дата операции' и 'Сумма операции'.
     """
     logging.info(f"Загрузка транзакций из файла: {path_to_file} за месяц: {month}")
 
@@ -303,3 +303,57 @@ def get_limit_transaction(limit: int, transactions: list[dict[str, float]]) -> f
     total = round(savings, 2)
     logging.info(f"Общая сумма накоплений: {total}")
     return total
+
+    ###################################
+    # 3. Отчеты. Траты по дням недели #
+    ###################################
+
+
+def load_transactions_for_3_months(path_to_file: str, date: str) -> List[Dict[str, Any]]:
+    """
+    Загружает данные из Excel-файла и возвращает транзакции за 3 месяца от указанной даты (формат 'YYYY-MM-DD').
+    Возвращает список словарей с ключами 'Дата операции' и 'Сумма операции'.
+
+    Принимает путь к Excel-файлу с транзакциями и дату в формате 'YYYY-MM-DD' для отсчета 3 месяцев.
+    Возвращает список словарей с транзакциями за последние 3 месяца.
+    """
+
+    try:
+        # Преобразуем строку с датой в объект datetime
+        end_date = datetime.strptime(date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        start_date = end_date - timedelta(days=90)
+
+        logging.info(
+            f"Загрузка транзакций из файла: {path_to_file} за период с {start_date.date()} по {end_date.date()}"
+        )
+
+        # Загрузка данных из Excel
+        df = pd.read_excel(path_to_file)
+        logging.info(f"Файл загружен: {len(df)} строк")
+
+        # Проверка на наличие нужных колонок
+        if "Дата операции" not in df.columns or "Сумма операции" not in df.columns:
+            raise ValueError("В файле отсутствуют необходимые колонки 'Дата операции' или 'Сумма операции'.")
+
+        # Преобразование столбца с датами в тип datetime
+        df["Дата операции"] = pd.to_datetime(df["Дата операции"], dayfirst=True)
+
+        # Фильтрация по дате
+        df_filtered = df[(df["Дата операции"] >= start_date) & (df["Дата операции"] <= end_date)]
+        logging.info(f"После фильтрации по дате: {len(df_filtered)} строк")
+
+        transactions = [
+            {
+                "Дата операции": row["Дата операции"].strftime("%Y-%m-%d"),
+                "Сумма операции": float(row["Сумма операции"]),
+            }
+            for _, row in df_filtered.iterrows()
+            if not pd.isna(row["Сумма операции"])
+        ]
+
+        logging.info(f"Количество загруженных транзакций: {len(transactions)}")
+        return transactions
+
+    except Exception as e:
+        logging.error(f"Ошибка при загрузке транзакций: {e}")
+        return []
