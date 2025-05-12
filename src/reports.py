@@ -18,6 +18,9 @@ logging.basicConfig(
 
 
 def save_report(file_name: Optional[str] = None):
+    """
+        Декоратор для сохранения результата функции-отчета в JSON-файл.
+    """
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> pd.DataFrame:
@@ -45,6 +48,13 @@ def save_report(file_name: Optional[str] = None):
 
 @save_report("my_report.json")
 def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) -> pd.DataFrame:
+    """
+    Возвращает средние траты по дням недели за последние 3 месяца от указанной даты (или текущей, если не указана).
+    Учитываются только отрицательные суммы (траты).
+
+    Принимает DataFrame с колонками 'Дата операции' и 'Сумма операции' и строку даты в формате 'YYYY-MM-DD' (опционально)
+    Возвращает DataFrame со средними тратами по дням недели
+    """
     logging.info("Начало выполнения функции spending_by_weekday")
     try:
         if date is None:
